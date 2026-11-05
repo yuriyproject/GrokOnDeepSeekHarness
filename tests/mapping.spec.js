@@ -39,10 +39,11 @@ describe('SessionMapping', () => {
     })
   })
 
-  it('fails loudly on a corrupt state file', async () => {
+  it('sets a corrupt state file aside instead of failing to load', async () => {
     await withState(async (stateFile) => {
-      await writeFile(stateFile, '{"version":2,"sessions":{}}\n')
-      assert.throws(() => new SessionMapping(stateFile), /cannot read Grok session mapping/)
+      await writeFile(stateFile, '{"version":2,"sessions":{}}')
+      const mapping = new SessionMapping(stateFile, { warn() {} })
+      assert.equal(mapping.get('x'), undefined)
     })
   })
 })

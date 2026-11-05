@@ -60,3 +60,11 @@ was not touched.
   The DSH factory, presets and model catalog were exercised; the turn itself was not.
 - The existing `desktop` profile and its sessions: not touched on purpose.
 - macOS and Linux.
+
+## Re-verification after the review fixes (2026-11-05)
+
+- `npm run check`: 69 tests pass, 0 fail, 1 skipped (POSIX file mode on Windows).
+- Reinstalled into the `test` profile with `dsh plugin`; a Grok turn with a thought and a shell command
+  completed in 8 s (2 steps); a file write showed an approval card containing the target path and was
+  approved once; the turn completed.
+- Typing `/always` shows no command: `/always-approve` is withheld.

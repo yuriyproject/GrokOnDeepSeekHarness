@@ -35,6 +35,28 @@ describe('grokChildEnv', () => {
   })
 })
 
+describe('grokChildEnv overlay against the DSH merge', () => {
+  // DSH: child = scrubbed parent, then overlay; an explicit undefined removes an inherited entry.
+  function dshMerge(overlay, scrubbedParent) {
+    const merged = { ...scrubbedParent }
+    for (const [key, value] of Object.entries(overlay)) {
+      if (value === undefined) delete merged[key]
+      else merged[key] = value
+    }
+    return merged
+  }
+
+  it('removes every inherited variable the bridge does not name, in any letter case', () => {
+    const parent = { PATH: '/usr/bin', HOME: '/home/t', NODE_OPTIONS: '--require x', SSLKEYLOGFILE: '/tmp/k', xai_api_key: 'secret', HTTPS_PROXY: 'http://u:p@proxy' }
+    const overlay = grokChildEnv({ env: { Xai_Api_Key: 'again' } }, parent)
+    const child = dshMerge(overlay, parent)
+    assert.equal(child.NODE_OPTIONS, undefined)
+    assert.equal(child.SSLKEYLOGFILE, undefined)
+    assert.equal(Object.keys(child).some(key => key.toUpperCase() === 'XAI_API_KEY'), false)
+    assert.ok(child.PATH)
+  })
+})
+
 describe('Grok defaults', () => {
   it('honours GROK_COMMAND and GROK_HOME', () => {
     assert.equal(defaultGrokCommand({ GROK_COMMAND: 'C:\\x\\grok.exe' }), 'C:\\x\\grok.exe')

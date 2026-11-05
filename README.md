@@ -15,6 +15,7 @@ No xAI API key is used: the bridge relies only on the OAuth login of the Grok Bu
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): what it is, how it works, why.
 - [docs/INSTALL-FOR-AGENTS.md](docs/INSTALL-FOR-AGENTS.md): step-by-step install for an AI agent such as a DSH agent.
+- [docs/REVIEW-2026-11-05.md](docs/REVIEW-2026-11-05.md): independent review, fixes and deferred items.
 - [docs/VERIFICATION.md](docs/VERIFICATION.md) and [docs/UPSTREAM-SECURITY-AUDIT.md](docs/UPSTREAM-SECURITY-AUDIT.md).
 
 ## Requirements
@@ -96,10 +97,13 @@ Row options in `cordis.patch.yml` (`grok-acp`): `command`, `args`, `grokHome`, `
   `handleHostEnvelope` are replaced by `ClientSessions.handleSessionAdded/Removed`; the preset
   seat reads the session through standard slot props; `dsh.client.inject` lists the 0.2.2 client
   modules. The `ptc` preset id is localized.
-- **Isolation:** the Grok child gets a minimal environment, `GROK_HOME` from the config, no
-  `XAI_API_KEY`, `shell: false`, an argument array and an absolute resolved executable. A missing
+- **Isolation:** the Grok child keeps only an allow-list of environment variables (everything else
+  inherited from DSH is removed with explicit tombstones), gets `GROK_HOME` from the config, never
+  `XAI_API_KEY`, and starts with `shell: false`, an argument array, an absolute resolved executable
+  and a neutral working directory. A missing
   CLI never stops DSH: the picker stays on DSH and shows the reason.
-- **Permissions:** Grok permission requests go through the DSH approval service. `yoloMode` and
+- **Permissions:** Grok permission requests go through the DSH approval service and show the
+  command or path. A file write not covered by a permission asks too. `/always-approve` is withheld. `yoloMode` and
   `allowOutsideWorkspace` stay off; `danger-full-access` sessions still grant host-wide access.
 - Removed the demo media and the Chinese README; the helper CLI `dsh-grok` is pinned to 0.2.2-rc.1.
 
@@ -117,6 +121,7 @@ code, no obfuscation, no secret access. The plugin never reads `auth.json`.
 - Routine tool calls are grouped under one activity row; their diffs appear inside the row text,
   not as diff cards. File edits get diff cards.
 - Edits are shown one per step, and an edit waits until earlier routine calls finish.
+- Grok text that arrives while a tool is running is shown after the tool settles.
 - The DSH default workspace is `Documents\deepseek-harness\default-workspace`. With OneDrive
   folder redirection that is inside OneDrive. Choose a workspace outside it for Grok sessions.
 - The Grok plan name comes from the CLI. An Ultra account reports as "SuperGrok Heavy".

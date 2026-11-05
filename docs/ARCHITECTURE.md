@@ -73,11 +73,17 @@ browser (DSH Web)                         DSH host process                      
 ## Security model
 
 - Loopback-only HTTP route, same-origin writes, JSON only, 64 KB body cap.
-- The Grok child gets a minimal environment, `GROK_HOME` from the config, and **never** `XAI_API_KEY`.
-  The plugin never reads `auth.json`. The process is started without a shell, with an argument array
-  and a resolved absolute executable.
-- ACP file requests stay inside the session workspace (symlinks included) unless the session has
-  full access. `yoloMode` and `allowOutsideWorkspace` default to off.
+- The Grok child gets an allow-listed environment. DSH builds a child environment as "scrubbed parent
+  plus overlay" and scrubs only credential-shaped names, so the bridge overlays an explicit
+  `undefined` for every other parent variable. `GROK_HOME` comes from the config and `XAI_API_KEY` is
+  never forwarded. The plugin never reads `auth.json`. The process starts without a shell, with an
+  argument array, a resolved absolute executable and a neutral working directory.
+- ACP file requests stay inside the session workspace (symlinks, Windows trailing-dot segments,
+  device names and streams included) unless the session has full access, are capped at 8 MiB, and
+  ask for approval when no permission covered the write. `yoloMode` and `allowOutsideWorkspace` are off.
+- Approval cards show the redacted command or path. `/always-approve` is withheld because DSH has no
+  "approve everything" policy outside Full access.
+- The HTTP route requires loopback on both socket ends as well as the Host and Origin checks.
 - Upstream audit: [UPSTREAM-SECURITY-AUDIT.md](UPSTREAM-SECURITY-AUDIT.md).
 
 ## Limits and design choices

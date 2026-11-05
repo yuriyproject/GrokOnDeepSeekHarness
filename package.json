@@ -42,7 +42,8 @@
     "docs/ARCHITECTURE.md",
     "docs/INSTALL-FOR-AGENTS.md",
     "docs/VERIFICATION.md",
-    "AGENTS.md"
+    "AGENTS.md",
+    "docs/REVIEW-2026-11-05.md"
   ],
   "dsh": {
     "bundle": {

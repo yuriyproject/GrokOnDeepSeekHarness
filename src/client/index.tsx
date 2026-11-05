@@ -450,10 +450,14 @@ function useHarness(
     projectedPreset === GROK_PRESET && sessionId !== undefined ? coldGrokSnapshot(sessionId) : undefined
   )
   const [error, setError] = useState<string>()
+  const latest = useRef(sessionId)
+  latest.current = sessionId
   const load = async (): Promise<void> => {
     if (sessionId === undefined) return
     try {
       const next = await readStatus(sessionId)
+      // A slow answer for a session the composer has already left must not overwrite the new one.
+      if (latest.current !== sessionId) return
       if (next !== undefined) setSnapshot(next)
       setError(undefined)
     } catch (cause) {
@@ -574,7 +578,7 @@ function HeroAgentPresetSeat({ sessionId, useSession, useProjection, t }: HeroAg
     <div ref={rootRef} style={wrap}>
       <button
         type="button"
-        disabled={saving}
+        disabled={saving || !snapshot.blank || snapshot.running}
         style={trigger}
         aria-haspopup="menu"
         aria-expanded={open}

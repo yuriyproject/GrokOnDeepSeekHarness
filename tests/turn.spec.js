@@ -155,6 +155,38 @@ describe('Grok turn lifecycle against DSH step rules', () => {
     assert.deepEqual(t.session.events[2].data.message.content.map(block => block.type), ['text', 'tool-call'])
   })
 
+  it('keeps a running tool alive when text arrives before its result', async () => {
+    const t = rig()
+    await t.call('r1', 'execute', 'run_terminal_command · npm test')
+    await t.thought('still thinking while the command runs')
+    await t.text('partial answer ')
+    await t.done('r1', 'all tests passed')
+    await t.text('final answer')
+    const types = t.finish()
+    assert.deepEqual(types, [
+      'turn/start',
+      'step/start', 'assistant/message', 'tool/call', 'tool/ptc-dispatch-start', 'tool/ptc-dispatch', 'tool/result', 'step/end',
+      'step/start', 'assistant/message', 'step/end',
+      'turn/end',
+    ])
+    const settled = t.session.events[5].data
+    assert.equal(settled.isError, false)
+    assert.deepEqual(settled.content, [{ type: 'text', text: 'all tests passed' }])
+    const text = t.session.events[9].data.message.content
+    assert.deepEqual(text.map(block => block.type), ['reasoning', 'text'])
+    assert.equal(text.find(block => block.type === 'text').text, 'partial answer final answer')
+  })
+
+  it('does not fail a tool that is still pending when the turn ends in an error', async () => {
+    const t = rig()
+    await t.call('r1', 'read', 'read_file · a.txt')
+    await t.text('thinking')
+    const types = t.finish(true, 'Grok turn cancelled')
+    assert.equal(types.at(-1), 'turn/end')
+    const settled = t.session.events.find(event => event.type === 'tool/ptc-dispatch').data
+    assert.equal(settled.isError, true)
+  })
+
   it('gives every file edit its own advertised step and carries diffs', async () => {
     const t = rig()
     await t.call('e1', 'edit', 'apply_patch · a.txt', { path: 'a.txt' })
