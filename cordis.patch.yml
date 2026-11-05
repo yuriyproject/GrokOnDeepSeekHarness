@@ -1,13 +1,33 @@
-# Replace the native model UI with the Harness-aware contribution, then add Grok Build.
+# dsh-grok-acp bundle patch for DeepSeek Harness 0.2.2-rc.1.
+#
+# 1. The Harness-aware model seat replaces the stock model-selection UI.
+# 2. The Grok preset is declared as a regular agent preset row (shown by the
+#    registry like preset-standard / preset-minimal). It carries only a marker
+#    plugin that mounts the Grok slash commands.
+# 3. The bridge row swaps the agent-factory slot for a router that sends
+#    blank sessions to either the official agent loop or Grok Build over ACP.
+#
+# Grok state (auth, sessions, logs) lives in GROK_HOME. Set GROK_HOME and
+# GROK_COMMAND in the environment that starts DSH; XAI_API_KEY is never used.
 - id: ui-model-selection
   name: '@deepseek-ai/dsh-client-ui-model-selection'
   disabled: true
 - insert:
+    - id: preset-grok-build
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: grok-build
+        name: Grok Build
+        description: Grok Build through ACP (OAuth login of the Grok CLI)
+        order: 5
+        plugins:
+          - id: grok-build-harness
+            name: dsh-grok-acp/preset-marker
     - id: grok-acp
       name: dsh-grok-acp
       config:
-        command: !!js process.env.GROK_COMMAND || 'grok'
+        command: !!js process.env.GROK_COMMAND || ''
         args: [agent, --no-leader, stdio]
-        stateFile: !!js (process.env.DSH_HOME || (process.env.HOME + '/.dsh')) + '/grok-harness-sessions.json'
+        grokHome: !!js process.env.GROK_HOME || ''
         yoloMode: false
         allowOutsideWorkspace: false

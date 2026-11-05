@@ -32,7 +32,7 @@ describe('SessionMapping', () => {
     })
   })
 
-  it('writes owner-only state files', async () => {
+  it('writes owner-only state files', { skip: process.platform === 'win32' && 'POSIX modes are not enforced on Windows' }, async () => {
     await withState(async (stateFile) => {
       new SessionMapping(stateFile).set('local', 'remote')
       assert.equal((await stat(stateFile)).mode & 0o777, 0o600)

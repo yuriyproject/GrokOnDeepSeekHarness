@@ -5,20 +5,35 @@ import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createInterface } from 'node:readline/promises'
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const dshCommand = process.env.DSH_COMMAND || 'dsh'
-const grokCommand = process.env.GROK_COMMAND || 'grok'
+const profile = process.env.DSH_PROFILE || 'web'
 const dshHome = resolve(process.env.DSH_HOME || join(homedir(), '.dsh'))
-const supportedDshVersion = '0.1.1-rc.2'
+const supportedDshVersion = '0.2.2-rc.1'
 
-function printHelp() {
-  process.stdout.write(`dsh-grok: DeepSeek Harness Web with an in-page DSH / Grok Build switcher\n\nUsage:\n  dsh-grok web [args...]       start DSH Web on port 3080\n  dsh-grok setup               install or refresh the plugin Bundle\n  dsh-grok doctor              check installation\n  dsh-grok grok [args...]      original Grok terminal UI\n`)
+function grokCommand() {
+  if (process.env.GROK_COMMAND) return process.env.GROK_COMMAND
+  const bundled = join(process.env.USERPROFILE || process.env.HOME || homedir(), '.grok', 'bin', process.platform === 'win32' ? 'grok.exe' : 'grok')
+  return existsSync(bundled) ? bundled : 'grok'
 }
 
-function commandOutput(command, args, cwd, env = process.env) {
-  const result = spawnSync(command, args, { encoding: 'utf8', cwd, env })
+function printHelp() {
+  process.stdout.write(`dsh-grok: helper for the DSH / Grok Build bridge (DeepSeek Harness ${supportedDshVersion})
+
+Usage:
+  dsh-grok setup      install this package into the DSH profile "${profile}" (DSH_PROFILE overrides)
+  dsh-grok doctor     check the installation
+  dsh-grok web        start "dsh ${profile}" with the Grok environment
+
+Environment: DSH_COMMAND, DSH_PROFILE, DSH_HOME, GROK_COMMAND, GROK_HOME.
+The "desktop" profile is managed by the app: quit DeepSeek Harness before using it.
+`)
+}
+
+/** Run a command without a shell; arguments stay a separate array so paths with spaces survive. */
+function capture(command, args) {
+  const result = spawnSync(command, args, { encoding: 'utf8', shell: false, windowsHide: true })
   if (result.error) throw result.error
   if (result.status !== 0) {
     throw new Error(`${command} ${args.join(' ')} failed: ${(result.stderr || result.stdout).trim()}`)
@@ -26,8 +41,8 @@ function commandOutput(command, args, cwd, env = process.env) {
   return result.stdout.trim()
 }
 
-function run(command, args, env = process.env) {
-  const child = spawn(command, args, { stdio: 'inherit', cwd: process.cwd(), env })
+function inherit(command, args) {
+  const child = spawn(command, args, { stdio: 'inherit', cwd: process.cwd(), env: process.env, shell: false })
   child.once('error', (error) => {
     process.stderr.write(`dsh-grok: cannot start ${command}: ${error.message}\n`)
     process.exitCode = 1
@@ -39,67 +54,49 @@ function run(command, args, env = process.env) {
 }
 
 function setup() {
-  const version = commandOutput(dshCommand, ['--version'])
+  const version = capture(dshCommand, ['--version'])
   if (version !== supportedDshVersion) {
-    process.stderr.write(`dsh-grok: warning: developed against dsh ${supportedDshVersion}; found ${version}\n`)
+    process.stderr.write(`dsh-grok: warning: built for dsh ${supportedDshVersion}; found ${version}\n`)
   }
-  const grokVersion = commandOutput(grokCommand, ['--version'])
-  process.stdout.write(`Installing for dsh ${version}; ${grokVersion}\n`)
-  const sourceCheckout = existsSync(join(packageRoot, '.git'))
-  if (sourceCheckout && !existsSync(join(packageRoot, 'lib', 'client.js'))) {
-    throw new Error('source checkout is not built; run "npm ci --legacy-peer-deps && npm run check" first')
+  if (!existsSync(join(packageRoot, 'lib', 'client.js'))) {
+    throw new Error('lib/client.js is missing; run "npm ci --legacy-peer-deps && npm run check" in the source checkout first')
   }
-  const packageSpec = sourceCheckout ? packageRoot : 'dsh-grok-acp@latest'
-  commandOutput(dshCommand, ['plugin', '--profile', 'web', 'add', packageSpec])
-  process.stdout.write(`Installed Grok Build ACP in ${dshHome}.\nRun "dsh-grok web" and choose DSH or Grok Build in the composer.\n`)
+  process.stdout.write(`Installing ${packageRoot} into dsh profile "${profile}" (dsh ${version}).\n`)
+  process.stdout.write(`${capture(dshCommand, ['plugin', '--profile', profile, 'add', packageRoot])}\n`)
+  process.stdout.write(`Done. Start it with: dsh-grok web\n`)
 }
 
 function doctor() {
-  const dshVersion = commandOutput(dshCommand, ['--version'])
-  const grokVersion = commandOutput(grokCommand, ['--version'])
-  const profile = JSON.parse(readFileSync(join(dshHome, 'profiles', 'web', 'package.json'), 'utf8'))
-  const bundles = profile.dsh?.profile?.bundles ?? []
-  const grokPreset = existsSync(join(packageRoot, 'presets', 'grok-build', 'agent.cordis.yml'))
-  const client = existsSync(join(packageRoot, 'lib', 'client.js'))
-  process.stdout.write(`dsh: ${dshVersion}${dshVersion === supportedDshVersion ? '' : ` (expected ${supportedDshVersion})`}\ngrok: ${grokVersion}\nDSH home: ${dshHome}\nHarness router Bundle: ${bundles.includes('dsh-grok-acp') ? 'installed' : 'not installed'}\nGrok preset: ${grokPreset ? 'installed' : 'missing'}\nClient bundle: ${client ? 'built' : 'missing'}\n`)
-  if (!bundles.includes('dsh-grok-acp') || !grokPreset || !client) {
-    throw new Error('Harness router installation is not ready; run dsh-grok setup')
-  }
-}
-
-function runGrokWeb(args = []) {
-  run(dshCommand, ['web', ...args])
-}
-
-async function choose() {
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    printHelp()
-    process.exitCode = 2
-    return
-  }
-  const rl = createInterface({ input: process.stdin, output: process.stdout })
+  const dshVersion = capture(dshCommand, ['--version'])
+  const command = grokCommand()
+  let grokVersion = 'not found'
+  try { grokVersion = capture(command, ['--version']) } catch (error) { grokVersion = `not found (${error.message})` }
+  const manifest = join(dshHome, 'profiles', profile, 'package.json')
+  let installed = false
   try {
-    const answer = (await rl.question('选择运行方式：\n  1. DSH Web（页面内选择 DSH / Grok Build）\n  2. Grok Build TUI\n请输入 1 或 2：')).trim()
-    if (answer === '1') runGrokWeb()
-    else if (answer === '2') run(grokCommand, [])
-    else {
-      process.stderr.write('请输入 1 或 2。\n')
-      process.exitCode = 2
-    }
-  } finally {
-    rl.close()
+    const bundles = JSON.parse(readFileSync(manifest, 'utf8')).dsh?.profile?.bundles ?? []
+    installed = bundles.includes('dsh-grok-acp')
+  } catch {
+    // The profile does not exist yet.
   }
+  const lines = [
+    `dsh: ${dshVersion}${dshVersion === supportedDshVersion ? '' : ` (built for ${supportedDshVersion})`}`,
+    `grok: ${grokVersion} [${command}]`,
+    `GROK_HOME: ${process.env.GROK_HOME || '(Grok default)'}`,
+    `DSH home: ${dshHome}`,
+    `profile "${profile}": ${installed ? 'dsh-grok-acp installed' : 'dsh-grok-acp not installed'}`,
+    `client bundle: ${existsSync(join(packageRoot, 'lib', 'client.js')) ? 'built' : 'missing'}`,
+  ]
+  process.stdout.write(`${lines.join('\n')}\n`)
+  if (!installed) throw new Error('not installed; run dsh-grok setup')
 }
 
 const [action, ...args] = process.argv.slice(2)
 try {
-  if (action === undefined) await choose()
-  else if (action === 'web' || action === 'grok-web') runGrokWeb(args)
-  else if (action === 'dsh') runGrokWeb(args)
-  else if (action === 'grok') run(grokCommand, args)
-  else if (action === 'setup') setup()
+  if (action === 'setup') setup()
   else if (action === 'doctor') doctor()
-  else if (action === '--help' || action === '-h' || action === 'help') printHelp()
+  else if (action === 'web') inherit(dshCommand, [profile, ...args])
+  else if (action === undefined || action === '--help' || action === '-h' || action === 'help') printHelp()
   else {
     printHelp()
     process.exitCode = 2

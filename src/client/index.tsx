@@ -4,8 +4,10 @@ import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties }
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type {} from '@deepseek-ai/dsh-client-ui-session/client'
+import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
 import type {
-  InjectFace, PropsLocale, PropsRuntime, SessionIdOf, TranslateNS,
+  InjectFace, PropsLocale, PropsRuntime, SessionIdOf, SlotCore, TranslateNS,
 } from '@deepseek-ai/dsh-client-ui-slots'
 import { GROK_ACTIVITY_TOOL, type ActivityMeta } from '../../lib/activity.js'
 import {
@@ -16,7 +18,17 @@ import {
 } from './model-command.js'
 import { ModelDirectoryResolver } from './model-directory.js'
 
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    /** Client slot registry provided by the web shell. */
+    slots: SlotCore & {
+      inject: (name: string, factory: () => unknown) => unknown
+    }
+  }
+}
+
 const SESSION_PATH = '/grok-acp/session'
+const GROK_PRESET = 'grok-build'
 const STATUS_EVENT = 'dsh-grok-acp:status'
 const CORDIS_ORIGINAL = Symbol.for('cordis.original')
 const replacingSessions = new Set<string>()
@@ -98,29 +110,13 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     'dsh-grok-acp': keyof typeof en
   }
 
-  interface SlotMap {
-    /** Grok activity row registered into DSH's keyed Tool view seat. */
-    'tool.call.toolview': { kind: 'keyed'; scope: 'session'; owner: ActivityToolOwner }
-  }
 }
 
+/** Subset of the Tool block fields the activity row reads (`tool.call.toolview` owner `block`). */
 interface ActivityToolBlock {
-  kind?: 'tool-result'
-  name?: string
-  call?: { name: string; argsRaw: string } | null
   meta?: unknown
   isError?: boolean
-  subCalls: readonly ActivityToolBlock[]
-}
-
-interface ActivityToolOwner {
-  callId: string
-  toolName: string
-  block: ActivityToolBlock
-  cwd?: string
-  home?: string
-  openFile: (path: string) => void
-  inspect?: () => void
+  subCalls: readonly unknown[]
 }
 
 type Translate = TranslateNS<typeof LOCALE_NS>
@@ -128,6 +124,7 @@ type DshPreset = HarnessSnapshot['dshPresets'][number]
 
 const BUILTIN_PRESET_KEYS = {
   standard: ['standardName', 'standardDescription'],
+  ptc: ['codeName', 'codeDescription'],
   code: ['codeName', 'codeDescription'],
   minimal: ['minimalName', 'minimalDescription'],
   cordis: ['cordisName', 'cordisDescription'],
@@ -169,22 +166,10 @@ interface HarnessSnapshot {
   }
 }
 
-interface SessionListSnapshot {
-  current?: string
-  byId: Record<string, { id: string; blank: boolean; running?: boolean }>
-}
-
-interface SessionListStore {
-  subscribe: (fn: () => void) => () => void
-  getSnapshot: () => SessionListSnapshot
-}
-
-interface HostEnvelope {
-  payload: { type: string; sessionId?: string }
-}
-
-interface SessionHostRuntime {
-  handleHostEnvelope: (envelope: HostEnvelope) => void
+/** The client session manager methods the replacement filter wraps. */
+interface ClientSessionsRuntime {
+  handleSessionRemoved: (sessionId: string) => void
+  handleSessionAdded: (summary: { sessionId: string; agentAvailable?: boolean }) => void
 }
 
 interface ModelDirectoryFace {
@@ -207,7 +192,8 @@ interface CommandSession {
 interface CommandUiFace {
   register: (contribution: {
     name: string
-    description: string
+    label?: () => string
+    description?: () => string
     available: (session: CommandSession) => boolean
     ui: {
       kind: 'popupSelect'
@@ -246,10 +232,12 @@ function activityMetaOf(block: ActivityToolBlock): ActivityMeta | undefined {
 
 type ActivityToolRowProps = PropsRuntime<'tool.call.toolview'> & PropsLocale<typeof LOCALE_NS>
 
-function GrokActivityRow({ block, t }: ActivityToolRowProps) {
+function GrokActivityRow(props: ActivityToolRowProps) {
+  const { t } = props
+  const block = props.block as unknown as ActivityToolBlock
   const meta = activityMetaOf(block)
   const failed = meta?.failed ?? (block.isError ? 1 : 0)
-  const running = block.kind !== 'tool-result'
+  const running = props.phase !== 'result'
   const [expanded, setExpanded] = useState(failed > 0)
   useEffect(() => {
     if (failed > 0) setExpanded(true)
@@ -403,26 +391,34 @@ async function writeStatus(payload: Record<string, unknown>): Promise<HarnessSna
   return body
 }
 
+/**
+ * Switching the harness disposes the blank agent and publishes a replacement
+ * under the same session id. Hide the intermediate "removed" notification from
+ * the client session manager so the open chat is not torn down.
+ */
 function installReplacementFrameFilter(service: unknown): () => void {
   if (typeof service !== 'object' || service === null) return () => undefined
   const serviceRecord = service as Record<PropertyKey, unknown>
   const candidate = serviceRecord[CORDIS_ORIGINAL] ?? service
   if (typeof candidate !== 'object' || candidate === null) return () => undefined
-  const runtime = candidate as Partial<SessionHostRuntime>
-  const original = runtime.handleHostEnvelope
-  if (typeof original !== 'function') return () => undefined
-  const filtered = function (this: SessionHostRuntime, envelope: HostEnvelope): void {
-    const frame = envelope.payload
-    const sessionId = frame.sessionId
-    if (sessionId !== undefined && replacingSessions.has(sessionId)) {
-      if (frame.type === 'host/session-removed') return
-      if (frame.type === 'host/session-added') replacingSessions.delete(sessionId)
-    }
-    original.call(this, envelope)
+  const runtime = candidate as Partial<ClientSessionsRuntime>
+  const originalRemoved = runtime.handleSessionRemoved
+  const originalAdded = runtime.handleSessionAdded
+  if (typeof originalRemoved !== 'function' || typeof originalAdded !== 'function') return () => undefined
+  const removed = function (this: ClientSessionsRuntime, sessionId: string): void {
+    if (replacingSessions.has(sessionId)) return
+    originalRemoved.call(this, sessionId)
   }
-  runtime.handleHostEnvelope = filtered
+  const added = function (this: ClientSessionsRuntime, summary: { sessionId: string; agentAvailable?: boolean }): void {
+    // The replacement is complete once its agent is published, not at the first "added".
+    if (summary.agentAvailable === true) replacingSessions.delete(summary.sessionId)
+    originalAdded.call(this, summary)
+  }
+  runtime.handleSessionRemoved = removed
+  runtime.handleSessionAdded = added
   return () => {
-    if (runtime.handleHostEnvelope === filtered) runtime.handleHostEnvelope = original
+    if (runtime.handleSessionRemoved === removed) runtime.handleSessionRemoved = originalRemoved
+    if (runtime.handleSessionAdded === added) runtime.handleSessionAdded = originalAdded
   }
 }
 
@@ -430,8 +426,29 @@ function finishReplacement(sessionId: string): void {
   window.setTimeout(() => { replacingSessions.delete(sessionId) }, 5_000)
 }
 
-function useHarness(sessionId: string | undefined, session?: { running?: boolean; blank?: boolean }) {
-  const [snapshot, setSnapshot] = useState<HarnessSnapshot>()
+/** Read-only stand-in for a started Grok session whose agent is not live yet (cold history). */
+function coldGrokSnapshot(sessionId: string): HarnessSnapshot {
+  return {
+    sessionId,
+    harness: 'grok-build',
+    preset: GROK_PRESET,
+    dshPreset: 'standard',
+    blank: false,
+    running: false,
+    dshPresets: [],
+    grok: { ready: false, model: 'unknown', models: [], commands: [] },
+  }
+}
+
+function useHarness(
+  sessionId: string | undefined,
+  session?: { running?: boolean; blank?: boolean },
+  projectedPreset?: unknown,
+) {
+  const [loaded, setSnapshot] = useState<HarnessSnapshot>()
+  const snapshot = loaded ?? (
+    projectedPreset === GROK_PRESET && sessionId !== undefined ? coldGrokSnapshot(sessionId) : undefined
+  )
   const [error, setError] = useState<string>()
   const load = async (): Promise<void> => {
     if (sessionId === undefined) return
@@ -464,9 +481,12 @@ type HarnessPickerProps = PropsRuntime<'conversation.input.left'>
   & InjectFace<HarnessPickerInjected>
 
 function HarnessPicker({
-  sessionId, session, clearComposerBlock, t,
+  sessionId, useSession, useProjection, clearComposerBlock, t,
 }: HarnessPickerProps) {
-  const { snapshot, setSnapshot, error, setError } = useHarness(sessionId, session)
+  const running = Boolean(useSession(state => state.running))
+  const blank = Boolean(useSession(state => state.blank))
+  const preset = (useProjection as (key: string) => unknown)('agentPreset')
+  const { snapshot, setSnapshot, error, setError } = useHarness(sessionId, { running, blank }, preset)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -506,24 +526,19 @@ function HarnessPicker({
           Grok Build
         </button>
       </div>
-      {error && <span title={error} style={{ color: '#c94848', fontSize: 12 }}>!</span>}
+      {error && <span title={error} role="alert" style={{ color: '#c94848', fontSize: 12, whiteSpace: 'nowrap' }}>! {t('unavailable')}</span>}
     </div>
   )
 }
 
-interface HeroAgentPresetInjected {
-  sessions: SessionListStore
-}
-
 type HeroAgentPresetProps = PropsRuntime<'conversation.hero.agentPreset'>
   & PropsLocale<typeof LOCALE_NS>
-  & InjectFace<HeroAgentPresetInjected>
 
-function HeroAgentPresetSeat({ sessions, t }: HeroAgentPresetProps) {
-  const list = useSyncExternalStore(sessions.subscribe, sessions.getSnapshot)
-  const sessionId = list.current
-  const session = sessionId === undefined ? undefined : list.byId[sessionId]
-  const { snapshot, setSnapshot, error, setError } = useHarness(sessionId, session)
+function HeroAgentPresetSeat({ sessionId, useSession, useProjection, t }: HeroAgentPresetProps) {
+  const running = Boolean(useSession(state => state.running))
+  const blank = Boolean(useSession(state => state.blank))
+  const preset = (useProjection as (key: string) => unknown)('agentPreset')
+  const { snapshot, setSnapshot, error, setError } = useHarness(sessionId, { running, blank }, preset)
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -705,6 +720,7 @@ function ComposerModelSeat(props: {
   sessionId: string
   locked: boolean
   useSession: (select: (state: { running: boolean; blank: boolean }) => unknown) => unknown
+  useProjection: (key: string) => unknown
   directory?: { subscribe: (fn: () => void) => () => void; getSnapshot: () => { current: { provider: string; model: string; reasoningEffort?: string } | null; groups: Array<{ id: string; name: string; models: Array<{ id: string; name: string }> }> } }
   loadDsh?: () => void
   selectDsh?: (selection: { provider: string; model: string }) => Promise<boolean>
@@ -712,7 +728,7 @@ function ComposerModelSeat(props: {
 }) {
   const running = Boolean(props.useSession(state => state.running))
   const blank = Boolean(props.useSession(state => state.blank))
-  const { snapshot, setSnapshot } = useHarness(props.sessionId, { running, blank })
+  const { snapshot, setSnapshot } = useHarness(props.sessionId, { running, blank }, props.useProjection('agentPreset'))
   if (snapshot === undefined) return null
   if (snapshot.harness === 'grok-build') {
     return <GrokModelSeat sessionId={props.sessionId} locked={props.locked} snapshot={snapshot} onChange={setSnapshot} t={props.t} />
@@ -720,7 +736,7 @@ function ComposerModelSeat(props: {
   return <DshModelSeat locked={props.locked} directory={props.directory} load={props.loadDsh} select={props.selectDsh} t={props.t} />
 }
 
-export const inject = ['slots', 'locale', 'commandUi', 'connection', 'sessions', 'remote']
+export const inject = ['slots', 'locale', 'commandUi', 'sessions', 'remote', 'remote.session']
 
 export function apply(ctx: Context): void {
   ctx.effect(() => ctx.locale.register(LOCALE_NS, { zh, en }), 'dsh-grok-acp locale dictionaries')
@@ -737,16 +753,11 @@ export function apply(ctx: Context): void {
     scope.effect(() => installReplacementFrameFilter(sessions), 'dsh-grok-acp session replacement frames')
   })
 
-  ctx.slots.inject('conversation.hero.agentPreset', () => {
-    const sessions = ctx.get('sessions') as { list: SessionListStore } | undefined
-    if (sessions === undefined) return () => undefined
-    return ctx.slots.register({
-      name: 'conversation.hero.agentPreset',
-      priority: -1,
-      locale: LOCALE_NS,
-      inject: (): HeroAgentPresetInjected => ({ sessions: sessions.list }),
-    }, HeroAgentPresetSeat)
-  })
+  ctx.slots.inject('conversation.hero.agentPreset', () => ctx.slots.register({
+    name: 'conversation.hero.agentPreset',
+    priority: -1,
+    locale: LOCALE_NS,
+  }, HeroAgentPresetSeat))
 
   ctx.slots.inject('conversation.input.left', () => ctx.slots.register({
     name: 'conversation.input.left',
@@ -801,7 +812,8 @@ export function apply(ctx: Context): void {
     const sessions = scope.get('sessions') as { subagentAddress: (sessionId: SessionIdOf) => unknown }
     const contribution = (name: 'model' | 'models') => ({
       name,
-      description: t('modelCommand'),
+      label: () => name,
+      description: () => t('modelCommand'),
       available: (session: CommandSession) => sessions.subagentAddress(session.sessionId) === undefined,
       ui: {
         kind: 'popupSelect' as const,

@@ -40,7 +40,7 @@ describe('resolveWorkspacePath', () => {
     await withWorkspace(async ({ workspace, outside }) => {
       const file = join(outside, 'secret.txt')
       await writeFile(file, 'secret')
-      await symlink(outside, join(workspace, 'linked'))
+      await symlink(outside, join(workspace, 'linked'), process.platform === 'win32' ? 'junction' : 'dir')
       await assert.rejects(
         resolveWorkspacePath('linked/secret.txt', workspace, 'read', false),
         /escapes the session workspace/,

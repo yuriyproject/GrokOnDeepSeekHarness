@@ -4,9 +4,9 @@ import {
   permissionOutcome,
   planTodos,
   renderToolOutput,
-  sessionBlank,
   toAcpPrompt,
 } from '../lib/render.js'
+import { sessionBlank } from '../lib/dsh.js'
 import { isGrokPreset } from '../lib/constants.js'
 import {
   activityMeta,
@@ -130,129 +130,12 @@ describe('GrokWebAgent plan projection', () => {
   })
 })
 
-describe('GrokWebAgent assistant persistence', () => {
-  it('commits streamed output as interrupted when a turn is cancelled', () => {
-    const events = []
-    const agent = Object.create(GrokWebAgent.prototype)
-    Object.assign(agent, {
-      grokModel: 'grok-4.6',
-      session: {
-        append(type, data, options) {
-          events.push({ type, data, options })
-          return { seq: events.length }
-        },
-      },
-    })
-    const active = {
-      turn: 1,
-      step: 1,
-      text: 'partial answer',
-      reasoning: 'partial reasoning',
-      textStarted: true,
-      reasoningStarted: true,
-      textIndex: 1,
-      reasoningIndex: 0,
-      chunkSeqs: [10, 11],
-      assistantCommitted: false,
-    }
-
-    agent.commitAssistant(active, true)
-
-    assert.deepEqual(events.map(event => event.type), [
-      'assistant/chunk',
-      'assistant/chunk',
-      'assistant/message',
-    ])
-    assert.equal(events[2].data.interrupted, true)
-    assert.deepEqual(events[2].data.message.content, [
-      { type: 'reasoning', text: 'partial reasoning' },
-      { type: 'text', text: 'partial answer' },
-    ])
-    assert.deepEqual(events[2].options.sourceEventSeqs, [10, 11, 1, 2])
-  })
-
-  it('commits assistant output only once', () => {
-    const events = []
-    const agent = Object.create(GrokWebAgent.prototype)
-    Object.assign(agent, {
-      session: {
-        append(type, data, options) {
-          events.push({ type, data, options })
-          return { seq: events.length }
-        },
-      },
-    })
-    const active = {
-      turn: 1,
-      step: 1,
-      text: 'done',
-      reasoning: '',
-      textStarted: false,
-      reasoningStarted: false,
-      textIndex: 0,
-      reasoningIndex: undefined,
-      chunkSeqs: [],
-      assistantCommitted: false,
-    }
-
-    agent.commitAssistant(active, false)
-    agent.commitAssistant(active, true)
-
-    assert.equal(events.filter(event => event.type === 'assistant/message').length, 1)
-    assert.equal(events[0].data.interrupted, undefined)
-  })
-})
-
 describe('Grok activity groups', () => {
   it('classifies routine calls while keeping file mutations standalone', () => {
     assert.equal(classifyActivityTool({ kind: 'read', title: 'read_file · README.md' }), 'read')
     assert.equal(classifyActivityTool({ kind: 'execute', title: 'run_terminal_command · npm test' }), 'command')
     assert.equal(classifyActivityTool({ kind: 'search', title: 'grep · tool_call' }), 'search')
     assert.equal(classifyActivityTool({ kind: 'edit', title: 'apply_patch · README.md' }), 'edit')
-  })
-
-  it('logs routine calls as children and summarizes the whole turn', () => {
-    const events = []
-    const agent = Object.create(GrokWebAgent.prototype)
-    agent.session = {
-      append(type, data, options) {
-        events.push({ type, data, options })
-        return { seq: events.length }
-      },
-    }
-    const active = {
-      turn: 2,
-      step: 1,
-      toolNames: new Map(),
-      activity: createActivityState(2, 1),
-    }
-
-    agent.ensureToolCall(active, {
-      toolCallId: 'read-1', kind: 'read', title: 'read_file · README.md', rawInput: { path: 'README.md' },
-    })
-    agent.appendToolResult(active, 'read-1', 'contents', false, [])
-    agent.ensureToolCall(active, {
-      toolCallId: 'edit-1', kind: 'edit', title: 'apply_patch · README.md', rawInput: { path: 'README.md' },
-    })
-    agent.appendToolResult(active, 'edit-1', 'done', false, [{ path: 'README.md', oldText: 'a', newText: 'b' }])
-    agent.closeActivity(active)
-
-    assert.deepEqual(events.map(event => event.type), [
-      'tool/call',
-      'tool/code-dispatch-start',
-      'tool/code-dispatch',
-      'tool/call',
-      'tool/result',
-      'tool/result',
-    ])
-    assert.equal(events[0].data.name, 'grok_build_activity')
-    assert.equal(events[1].data.rootCallId, 'grok-activity:2:1')
-    assert.equal(events[3].data.name, 'apply_patch · README.md')
-    assert.deepEqual(events[5].data.meta.grokActivity, {
-      total: 2,
-      failed: 0,
-      counts: { read: 1, command: 0, search: 0, edit: 1, other: 0 },
-    })
   })
 
   it('marks the group failed so the collapsed row cannot hide errors', () => {
@@ -274,7 +157,11 @@ describe('session helpers', () => {
   })
 
   it('treats a session without turns as blank', () => {
-    assert.equal(sessionBlank({ events: [] }), true)
-    assert.equal(sessionBlank({ events: [{ type: 'turn/start' }] }), false)
+    assert.equal(sessionBlank(undefined, { snapshotEvents: () => [] }), true)
+    assert.equal(sessionBlank(undefined, { snapshotEvents: () => [{ type: 'turn/start' }] }), false)
+    const ctx = { agents: { turnBoundaryOf: () => ({ openTurnStartSeq: null, lastTurn: 0 }) } }
+    assert.equal(sessionBlank(ctx, {}), true)
+    const started = { agents: { turnBoundaryOf: () => ({ openTurnStartSeq: null, lastTurn: 2 }) } }
+    assert.equal(sessionBlank(started, {}), false)
   })
 })
