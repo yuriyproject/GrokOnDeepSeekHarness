@@ -11,6 +11,12 @@ No xAI API key is used: the bridge relies only on the OAuth login of the Grok Bu
 > ported to DSH `0.2.2-rc.1`. The original copyright notice is kept in [LICENSE](LICENSE).
 > Русская версия: [README.ru.md](README.ru.md).
 
+## Documentation
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): what it is, how it works, why.
+- [docs/INSTALL-FOR-AGENTS.md](docs/INSTALL-FOR-AGENTS.md): step-by-step install for an AI agent such as a DSH agent.
+- [docs/VERIFICATION.md](docs/VERIFICATION.md) and [docs/UPSTREAM-SECURITY-AUDIT.md](docs/UPSTREAM-SECURITY-AUDIT.md).
+
 ## Requirements
 
 - DeepSeek Harness `0.2.2-rc.1` (desktop app 44.7.0 or the `dsh` CLI of the same release).

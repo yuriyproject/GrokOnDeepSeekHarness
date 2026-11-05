@@ -48,8 +48,8 @@ was not touched.
 
 - Grok state: only under `GROK_HOME`; `~/.grok` had no new files.
 - The session map is written to `<DSH_HOME>\grok-harness-sessions.json`.
-- No new file appeared under `C:\Users\yuriy\OneDrive` because of the run. The one newer file,
-  `Рабочий стол\image.jpg` (16:42), is unrelated to the plugin.
+- No new file appeared in the cloud-synced user folder (OneDrive) because of the run. One unrelated
+  file written by the user on the desktop during the run was ignored.
 - A first attempt used the DSH default workspace, which lives in OneDrive; the write was declined.
   The test profile was recreated with `documentsDirectory` pointing outside OneDrive.
 - `auth.json` is never read or logged by the plugin; `XAI_API_KEY` is dropped from the child environment.

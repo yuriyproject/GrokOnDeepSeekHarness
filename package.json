@@ -38,7 +38,11 @@
     "README.md",
     "README.ru.md",
     "LICENSE",
-    "docs/UPSTREAM-SECURITY-AUDIT.md"
+    "docs/UPSTREAM-SECURITY-AUDIT.md",
+    "docs/ARCHITECTURE.md",
+    "docs/INSTALL-FOR-AGENTS.md",
+    "docs/VERIFICATION.md",
+    "AGENTS.md"
   ],
   "dsh": {
     "bundle": {
