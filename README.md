@@ -71,7 +71,8 @@ Set these in the environment that starts DSH. The bundle patch reads them.
 
 Row options in `cordis.patch.yml` (`grok-acp`): `command`, `args`, `grokHome`, `env`, `stateFile`,
 `disposeGraceMs`, `idleDisposeMs`, `yoloMode` (default `false`), `allowOutsideWorkspace`
-(default `false`). `XAI_API_KEY` is dropped even when set in `env`.
+(default `false`), `forwardMcp` (default `false`, experimental: sends the host's active
+`dsh-mcp-client` servers to Grok; secrets are never logged). `XAI_API_KEY` is dropped even when set in `env`.
 
 ## Differences from upstream
 
@@ -104,6 +105,9 @@ Row options in `cordis.patch.yml` (`grok-acp`): `command`, `args`, `grokHome`, `
 - **Permissions:** Grok permission requests go through the DSH approval service and show the
   command or path. A file write not covered by a permission asks too. `/always-approve` is withheld. `yoloMode` and
   `allowOutsideWorkspace` stay off; `danger-full-access` sessions still grant host-wide access.
+- **Extras:** a warning badge when the workspace is inside a cloud-synced folder (OneDrive, Dropbox and
+  similar); the Grok session id is also stored as an ignorable record in the DSH session log, used only
+  when the JSON map has no entry; per-session model and effort; `steer`; image attachments.
 - Removed the demo media and the Chinese README; the helper CLI `dsh-grok` is pinned to 0.2.2-rc.1.
 
 ## Security

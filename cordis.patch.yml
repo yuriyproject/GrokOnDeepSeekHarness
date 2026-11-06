@@ -31,3 +31,4 @@
         grokHome: !!js process.env.GROK_HOME || ''
         yoloMode: false
         allowOutsideWorkspace: false
+        forwardMcp: false

@@ -76,3 +76,11 @@ was not touched.
   A turn with a read and a write completed in 17 s with one approval and created the file.
 - Not exercised live: `steer` during a running turn, a pasted image, a failed harness switch. They are
   covered by unit tests only.
+
+## Third round (cloud warning, session link, always-allow note, MCP forwarding)
+
+- `npm run check`: 105 tests pass, 0 fail, 1 skipped.
+- Session link: a session carrying the `plugin:dsh-grok-acp/session` ignorable record was reopened with the
+  plugin removed from the profile; the history loaded with no corruption error.
+- Not exercised live: `forwardMcp: true` against a real MCP server (default off), the cloud-folder badge
+  in the browser. Both are covered by unit tests only.
