@@ -76,6 +76,8 @@ const en = {
   activityOther: 'Other',
   activityExpand: 'Show full timeline',
   activityCollapse: 'Hide full timeline',
+  syncedWarning: 'Cloud-synced folder',
+  syncedHint: 'Grok writes files in this workspace. The cloud client may sync or lock them. Choose a workspace outside the synced folder if that is a problem.',
 } as const
 
 const zh: Record<keyof typeof en, string> = {
@@ -111,6 +113,45 @@ const zh: Record<keyof typeof en, string> = {
   activityOther: '其他',
   activityExpand: '展开完整时间线',
   activityCollapse: '收起完整时间线',
+  syncedWarning: '云同步文件夹',
+  syncedHint: 'Grok 会在此工作区写入文件。云客户端可能会同步或锁定这些文件。如果这造成问题，请选择同步文件夹之外的工作区。',
+}
+
+const ru: Record<keyof typeof en, string> = {
+  unavailable: 'Harness недоступен',
+  harnessHint: 'Выберите движок выполнения для этой сессии',
+  harnessLocked: 'Harness нельзя сменить после начала сессии',
+  presetHint: 'Пресет агента для сессии DSH, которая вот-вот начнётся',
+  presetMenu: 'Пресеты агента',
+  grokModels: 'Модели Grok Build',
+  noGrokModels: 'Grok Build не сообщил доступные модели',
+  reasoningEffort: 'Усилие рассуждения',
+  dshModel: 'Модель DSH',
+  chooseModel: 'Выберите модель',
+  modelCommand: 'Выберите модель для активного Harness',
+  modelUnavailable: 'Выбор модели недоступен',
+  staleModel: 'Список моделей изменился; откройте выбор ещё раз',
+  standardName: 'Стандартный режим',
+  standardDescription: 'Полноценный агент для кода.',
+  codeName: 'Режим PTC',
+  codeDescription: 'Объединяет многошаговые операции через Code Mode SDK.',
+  minimalName: 'Минимальный режим',
+  minimalDescription: 'Постоянные инструменты bash и правки файлов.',
+  cordisName: 'Режим создателя',
+  cordisDescription: 'Создаёт пользовательские пресеты агентов.',
+  activityRunning: 'Выполняется',
+  activityCompleted: 'Завершено',
+  activityFailed: 'Ошибка',
+  activityOperations: 'операций',
+  activityRead: 'Чтение',
+  activityCommand: 'Команды',
+  activitySearch: 'Поиск',
+  activityEdit: 'Изменения',
+  activityOther: 'Другое',
+  activityExpand: 'Показать всю ленту',
+  activityCollapse: 'Скрыть всю ленту',
+  syncedWarning: 'Папка облачной синхронизации',
+  syncedHint: 'Grok записывает файлы в эту рабочую область. Облачный клиент может синхронизировать или блокировать их. Если это мешает, выберите рабочую область вне синхронизируемой папки.',
 }
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -172,6 +213,7 @@ interface HarnessSnapshot {
     models: GrokModel[]
     effort?: string
     commands: Array<{ name: string; description: string; hint?: string }>
+    workspaceSynced?: boolean
   }
 }
 
@@ -533,6 +575,9 @@ function HarnessPicker({
           Grok Build
         </button>
       </div>
+      {grok && snapshot.grok.workspaceSynced && (
+        <span role="status" title={t('syncedHint')} style={{ color: '#b7791f', fontSize: 12, whiteSpace: 'nowrap' }}>{t('syncedWarning')}</span>
+      )}
       {error && <span title={error} role="alert" style={{ color: '#c94848', fontSize: 12, whiteSpace: 'nowrap' }}>! {t('unavailable')}</span>}
     </div>
   )
@@ -752,7 +797,7 @@ function ComposerModelSeat(props: {
 export const inject = ['slots', 'locale', 'commandUi', 'sessions', 'remote', 'remote.session']
 
 export function apply(ctx: Context): void {
-  ctx.effect(() => ctx.locale.register(LOCALE_NS, { zh, en }), 'dsh-grok-acp locale dictionaries')
+  ctx.effect(() => ctx.locale.register(LOCALE_NS, { zh, en, ru }), 'dsh-grok-acp locale dictionaries')
   ctx.effect(installActivityStyle, 'dsh-grok-acp activity group styles')
   const t = ctx.locale.bind(LOCALE_NS) as Translate
   ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({
