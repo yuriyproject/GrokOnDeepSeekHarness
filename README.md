@@ -1,4 +1,4 @@
-# dsh-grok-acp (fork for DeepSeek Harness 0.2.2-rc.1)
+# GrokOnDeepSeekHarness (`dsh-grok-acp`, DeepSeek Harness 0.2.2-rc.1)
 
 Run **Grok Build** as the root agent of a DeepSeek Harness (DSH) Web session. A switch next to the
 composer chooses **DSH** (the stock agent loop, the default) or **Grok Build**. In Grok mode the
@@ -34,8 +34,8 @@ Install into a profile with the stock plugin command. **Do not edit profile file
 Quit the desktop app before touching the `desktop` profile, or better, try a separate profile first.
 
 ```powershell
-git clone https://github.com/yuriyproject/DSH-agent-bridge.git
-cd DSH-agent-bridge
+git clone https://github.com/yuriyproject/GrokOnDeepSeekHarness.git
+cd GrokOnDeepSeekHarness
 git checkout dsh-0.2.2
 npm ci --legacy-peer-deps
 npm run check

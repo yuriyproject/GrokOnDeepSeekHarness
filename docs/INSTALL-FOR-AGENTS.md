@@ -26,8 +26,8 @@ The Grok CLI must already be signed in (`grok login`). The sign-in is a user act
 ## 2. Get and build the package
 
 ```bash
-git clone https://github.com/yuriyproject/DSH-agent-bridge.git
-cd DSH-agent-bridge
+git clone https://github.com/yuriyproject/GrokOnDeepSeekHarness.git
+cd GrokOnDeepSeekHarness
 git checkout dsh-0.2.2
 npm ci --legacy-peer-deps
 npm run check          # all steps must pass

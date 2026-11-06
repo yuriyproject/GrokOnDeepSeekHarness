@@ -6,11 +6,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/yuriyproject/DSH-agent-bridge.git"
+    "url": "git+https://github.com/yuriyproject/GrokOnDeepSeekHarness.git"
   },
-  "homepage": "https://github.com/yuriyproject/DSH-agent-bridge#readme",
+  "homepage": "https://github.com/yuriyproject/GrokOnDeepSeekHarness#readme",
   "bugs": {
-    "url": "https://github.com/yuriyproject/DSH-agent-bridge/issues"
+    "url": "https://github.com/yuriyproject/GrokOnDeepSeekHarness/issues"
   },
   "keywords": [
     "deepseek-harness",

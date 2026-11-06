@@ -1,4 +1,4 @@
-# dsh-grok-acp (форк под DeepSeek Harness 0.2.2-rc.1)
+# GrokOnDeepSeekHarness (`dsh-grok-acp`, DeepSeek Harness 0.2.2-rc.1)
 
 Запускает **Grok Build** корневым агентом сессии DeepSeek Harness (DSH) Web. Переключатель рядом с
 полем ввода выбирает **DSH** (штатный агент, режим по умолчанию) или **Grok Build**. В Grok-режиме ход
@@ -25,8 +25,8 @@ DSH принимает бандл только при точном совпад�
 сначала полностью закройте приложение; лучше сперва проверить в отдельном профиле.
 
 ```powershell
-git clone https://github.com/yuriyproject/DSH-agent-bridge.git
-cd DSH-agent-bridge
+git clone https://github.com/yuriyproject/GrokOnDeepSeekHarness.git
+cd GrokOnDeepSeekHarness
 git checkout dsh-0.2.2
 npm ci --legacy-peer-deps
 npm run check
