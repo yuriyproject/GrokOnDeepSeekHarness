@@ -36,7 +36,6 @@ Quit the desktop app before touching the `desktop` profile, or better, try a sep
 ```powershell
 git clone https://github.com/yuriyproject/GrokOnDeepSeekHarness.git
 cd GrokOnDeepSeekHarness
-git checkout dsh-0.2.2
 npm ci --legacy-peer-deps
 npm run check
 

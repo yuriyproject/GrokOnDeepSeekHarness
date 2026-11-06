@@ -28,7 +28,6 @@ The Grok CLI must already be signed in (`grok login`). The sign-in is a user act
 ```bash
 git clone https://github.com/yuriyproject/GrokOnDeepSeekHarness.git
 cd GrokOnDeepSeekHarness
-git checkout dsh-0.2.2
 npm ci --legacy-peer-deps
 npm run check          # all steps must pass
 npm pack               # produces dsh-grok-acp-<version>.tgz
