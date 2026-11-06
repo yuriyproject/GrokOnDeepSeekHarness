@@ -13,6 +13,8 @@ No xAI API key is used: the bridge relies only on the OAuth login of the Grok Bu
 
 ## Documentation
 
+- [docs/OVERVIEW.md](docs/OVERVIEW.md): two-minute product description (also in [Russian](docs/OVERVIEW.ru.md)).
+- [docs/HANDOFF.md](docs/HANDOFF.md): project state, rules and backlog for the next agent or developer.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): what it is, how it works, why.
 - [docs/INSTALL-FOR-AGENTS.md](docs/INSTALL-FOR-AGENTS.md): step-by-step install for an AI agent such as a DSH agent.
 - [docs/REVIEW-2026-11-05.md](docs/REVIEW-2026-11-05.md): independent review, fixes and deferred items.

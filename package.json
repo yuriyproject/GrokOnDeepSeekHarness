@@ -43,7 +43,10 @@
     "docs/INSTALL-FOR-AGENTS.md",
     "docs/VERIFICATION.md",
     "AGENTS.md",
-    "docs/REVIEW-2026-11-05.md"
+    "docs/REVIEW-2026-11-05.md",
+    "docs/OVERVIEW.md",
+    "docs/OVERVIEW.ru.md",
+    "docs/HANDOFF.md"
   ],
   "dsh": {
     "bundle": {

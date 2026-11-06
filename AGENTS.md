@@ -6,4 +6,5 @@ This repository is the **DSH / Grok Build bridge** for DeepSeek Harness 0.2.2-rc
 - To understand it, read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - Never enter or print credentials, never read `auth.json`, never set `XAI_API_KEY`, never use a
   version exemption.
+- To continue the work, read [docs/HANDOFF.md](docs/HANDOFF.md) (state, hard rules, backlog).
 - Before changing code run `npm ci --legacy-peer-deps && npm run check`.

@@ -10,6 +10,11 @@
 > портированный на DSH `0.2.2-rc.1`. Исходная лицензия сохранена в [LICENSE](LICENSE).
 > English version: [README.md](README.md).
 
+## Документация
+
+- [docs/OVERVIEW.ru.md](docs/OVERVIEW.ru.md): описание продукта за две минуты (English: [docs/OVERVIEW.md](docs/OVERVIEW.md)).
+- [docs/HANDOFF.md](docs/HANDOFF.md): состояние проекта, правила и план для следующего агента (на английском).
+
 ## Требования
 
 - DeepSeek Harness `0.2.2-rc.1` (приложение 44.7.0 или CLI `dsh` того же релиза).
