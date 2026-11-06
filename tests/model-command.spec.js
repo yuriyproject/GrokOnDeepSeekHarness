@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { CLIENT_OWNED_COMMANDS } from '../lib/preset-marker.js'
-import { modelCommandOptions, modelCommandSelection } from '../src/client/model-command.ts'
+import { dshSeatSelection, modelCommandOptions, modelCommandSelection } from '../src/client/model-command.ts'
 
 const grok = {
   harness: 'grok-build',
@@ -46,6 +46,28 @@ describe('Harness-aware model commands', () => {
     assert.deepEqual(modelCommandSelection(options[1].id, state, dsh), {
       kind: 'dsh',
       selection: { provider: 'deepseek', model: 'deepseek-v4-pro', reasoningEffort: 'high' },
+    })
+  })
+
+  it('passes the selected DSH model default reasoning effort', () => {
+    const state = { ...grok, harness: 'dsh' }
+    assert.deepEqual(dshSeatSelection('deepseek', 'deepseek-v4-pro', dsh), {
+      provider: 'deepseek',
+      model: 'deepseek-v4-pro',
+      reasoningEffort: 'high',
+    })
+    assert.deepEqual(
+      dshSeatSelection('deepseek', 'deepseek-v4-pro', dsh),
+      modelCommandSelection(modelCommandOptions(state, dsh)[1].id, state, dsh)?.selection,
+    )
+    const currentHigh = {
+      ...dsh,
+      current: { provider: 'deepseek', model: 'deepseek-v4-pro', reasoningEffort: 'low' },
+    }
+    assert.deepEqual(dshSeatSelection('deepseek', 'deepseek-v4-pro', currentHigh), {
+      provider: 'deepseek',
+      model: 'deepseek-v4-pro',
+      reasoningEffort: 'low',
     })
   })
 

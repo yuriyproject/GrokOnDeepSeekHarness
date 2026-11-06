@@ -68,6 +68,29 @@ export function modelCommandOptions(
   return rows
 }
 
+/** DSH seat/command selection, including the model's default reasoning effort. */
+export function dshSeatSelection(
+  provider: string,
+  modelId: string,
+  dsh: DshModelCommandState,
+): { provider: string; model: string; reasoningEffort?: string } | undefined {
+  for (const group of dsh.groups) {
+    for (const model of group.models) {
+      if (group.id !== provider || model.id !== modelId) continue
+      const sameRoute = dsh.current?.provider === group.id && dsh.current.model === model.id
+      const reasoningEffort = sameRoute
+        ? dsh.current?.reasoningEffort ?? model.reasoning?.defaultEffort
+        : model.reasoning?.defaultEffort
+      return {
+        provider: group.id,
+        model: model.id,
+        ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+      }
+    }
+  }
+  return undefined
+}
+
 /** Resolve an option against a fresh Harness snapshot so stale cross-Harness picks fail closed. */
 export function modelCommandSelection(
   optionId: string,
@@ -82,18 +105,8 @@ export function modelCommandSelection(
   for (const group of dsh.groups) {
     for (const model of group.models) {
       if (dshOptionId(group.id, model.id) !== optionId) continue
-      const sameRoute = dsh.current?.provider === group.id && dsh.current.model === model.id
-      const reasoningEffort = sameRoute
-        ? dsh.current?.reasoningEffort ?? model.reasoning?.defaultEffort
-        : model.reasoning?.defaultEffort
-      return {
-        kind: 'dsh',
-        selection: {
-          provider: group.id,
-          model: model.id,
-          ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
-        },
-      }
+      const selection = dshSeatSelection(group.id, model.id, dsh)
+      return selection === undefined ? undefined : { kind: 'dsh', selection }
     }
   }
   return undefined

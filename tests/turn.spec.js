@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { GrokWebAgent, createTurnState } from '../lib/grok-agent.js'
+import { GrokWebAgent, TOOL_SETTLE_MS, createTurnState } from '../lib/grok-agent.js'
 
 /**
  * Minimal mirror of the lifecycle rules DSH 0.2.x enforces on stored logs:
@@ -117,7 +117,7 @@ function rig() {
     session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
     return session.events.map(event => event.type)
   }
-  return { agent, session, frames, text, thought, call, done, finish, active }
+  return { agent, session, frames, text, thought, call, done, finish, active, send }
 }
 
 describe('Grok turn lifecycle against DSH step rules', () => {
@@ -229,6 +229,51 @@ describe('Grok turn lifecycle against DSH step rules', () => {
     const results = t.session.events.filter(event => event.type === 'tool/result')
     assert.equal(results.length, 2)
     assert.equal(results.every(event => event.data.message.isError), true)
+  })
+
+  it('starts a tool with rawInput that arrived in a later update', async () => {
+    const t = rig()
+    await t.send({ sessionUpdate: 'tool_call', toolCallId: 'r1', kind: 'read', title: 'read_file · a.txt' })
+    assert.equal(t.session.events.some(event => event.type === 'tool/ptc-dispatch-start'), false)
+    await t.send({
+      sessionUpdate: 'tool_call_update',
+      toolCallId: 'r1',
+      rawInput: { path: 'a.txt' },
+    })
+    const start = t.session.events.find(event => event.type === 'tool/ptc-dispatch-start')
+    assert.deepEqual(start.data.arguments, { path: 'a.txt' })
+    await t.done('r1')
+    t.finish()
+  })
+
+  it('starts a tool when the result arrives before any rawInput', async () => {
+    const t = rig()
+    await t.send({ sessionUpdate: 'tool_call', toolCallId: 'r1', kind: 'read', title: 'read_file · a.txt' })
+    assert.equal(t.session.events.some(event => event.type === 'tool/ptc-dispatch-start'), false)
+    await t.done('r1', 'file contents')
+    const start = t.session.events.find(event => event.type === 'tool/ptc-dispatch-start')
+    assert.ok(start)
+    const settled = t.session.events.find(event => event.type === 'tool/ptc-dispatch')
+    assert.equal(settled.data.isError, false)
+    t.finish()
+  })
+
+  it('starts a tool after the settle timer when rawInput never arrives', async () => {
+    const t = rig()
+    const timers = []
+    t.agent.scheduleToolSettle = (fn, ms) => {
+      timers.push({ fn, ms })
+      return () => { timers.at(-1).cancelled = true }
+    }
+    await t.send({ sessionUpdate: 'tool_call', toolCallId: 'r1', kind: 'read', title: 'read_file · a.txt' })
+    assert.equal(t.session.events.some(event => event.type === 'tool/ptc-dispatch-start'), false)
+    assert.equal(timers.length, 1)
+    assert.equal(timers[0].ms, TOOL_SETTLE_MS)
+    timers[0].fn()
+    const start = t.session.events.find(event => event.type === 'tool/ptc-dispatch-start')
+    assert.ok(start)
+    await t.done('r1')
+    t.finish()
   })
 
   it('publishes live stream frames with a closing commit', async () => {

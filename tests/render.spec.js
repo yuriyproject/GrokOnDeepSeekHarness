@@ -29,6 +29,32 @@ describe('toAcpPrompt', () => {
       ],
     )
   })
+
+  it('maps inline image bytes to ACP image content when the agent accepts images', () => {
+    const png = 'iVBORw0KGgo='
+    assert.deepEqual(
+      toAcpPrompt([
+        { type: 'image', mimeType: 'image/png', data: png },
+        { type: 'image', mediaType: 'image/jpeg', data: png, name: 'shot.jpg' },
+      ], { image: true }),
+      [
+        { type: 'image', data: png, mimeType: 'image/png' },
+        { type: 'image', data: png, mimeType: 'image/jpeg' },
+      ],
+    )
+  })
+
+  it('keeps a placeholder when image prompts are not advertised or bytes are missing', () => {
+    const png = 'iVBORw0KGgo='
+    assert.deepEqual(
+      toAcpPrompt([{ type: 'image', mimeType: 'image/png', data: png }], { image: false }),
+      [{ type: 'text', text: '[image attached]' }],
+    )
+    assert.deepEqual(
+      toAcpPrompt([{ type: 'image', attachment: { mediaType: 'image/png', name: 'photo.png' } }], { image: true }),
+      [{ type: 'text', text: '[image attached: photo.png]' }],
+    )
+  })
 })
 
 describe('permissionOutcome', () => {
@@ -163,5 +189,28 @@ describe('session helpers', () => {
     assert.equal(sessionBlank(ctx, {}), true)
     const started = { agents: { turnBoundaryOf: () => ({ openTurnStartSeq: null, lastTurn: 2 }) } }
     assert.equal(sessionBlank(started, {}), false)
+  })
+})
+
+describe('inlineImages', () => {
+  const ref = { attachmentId: 'a1', mediaType: 'image/png', bytes: 3, width: 1, height: 1, name: 'shot.png' }
+
+  it('reads attachment bytes through the store and sends them as ACP images', async () => {
+    const { inlineImages, toAcpPrompt } = await import('../lib/render.js')
+    const store = { readImage: async () => ({ ref, data: new Uint8Array([1, 2, 3]) }) }
+    const content = await inlineImages([{ type: 'text', text: 'look' }, { type: 'image', attachment: ref }], store)
+    assert.deepEqual(toAcpPrompt(content, { image: true }), [
+      { type: 'text', text: 'look' },
+      { type: 'image', data: 'AQID', mimeType: 'image/png' },
+    ])
+  })
+
+  it('keeps a named placeholder when the read fails or no store exists', async () => {
+    const { inlineImages, toAcpPrompt } = await import('../lib/render.js')
+    const failing = { readImage: async () => { throw new Error('gone') } }
+    for (const store of [failing, undefined]) {
+      const content = await inlineImages([{ type: 'image', attachment: ref, name: 'shot.png' }], store)
+      assert.deepEqual(toAcpPrompt(content, { image: true }), [{ type: 'text', text: '[image attached: shot.png]' }])
+    }
   })
 })

@@ -68,3 +68,11 @@ was not touched.
   completed in 8 s (2 steps); a file write showed an approval card containing the target path and was
   approved once; the turn completed.
 - Typing `/always` shows no command: `/always-approve` is withheld.
+
+## Second round (per-session model, steer, delayed tool start, images, switch safety)
+
+- `npm run check`: 91 tests pass, 0 fail, 1 skipped.
+- Live in the `test` profile: session A set to Grok 4.6 and session B started on Grok 4.7; A kept 4.6.
+  A turn with a read and a write completed in 17 s with one approval and created the file.
+- Not exercised live: `steer` during a running turn, a pasted image, a failed harness switch. They are
+  covered by unit tests only.

@@ -2,6 +2,7 @@
 
 import { Service, type Context } from '@deepseek-ai/cordis'
 import type { SessionIdOf } from '@deepseek-ai/dsh-client-ui-slots'
+import { reconcileModelCurrent, sameModelRoute } from '../../lib/model-seat.js'
 import type { DshModelCommandState } from './model-command.js'
 
 interface ModelSelection {
@@ -130,6 +131,7 @@ export class ModelDirectory {
 
   private generation = 0
   private disposed = false
+  private pending: ModelSelection | null = null
   private readonly unsubscribe: Array<() => void> = []
 
   constructor(
@@ -167,6 +169,7 @@ export class ModelDirectory {
       })
       throw new Error(`session.selectModel failed: ${result.error.code}: ${result.error.message}`)
     }
+    this.pending = result.value.selected
     this.store.update((state) => {
       state.current = result.value.selected
       state.routable = true
@@ -179,6 +182,7 @@ export class ModelDirectory {
   resetConnected(): void {
     if (this.disposed) return
     ++this.generation
+    this.pending = null
     this.store.update((state) => {
       if (state.status === 'selecting') state.status = 'idle'
       state.error = null
@@ -205,7 +209,9 @@ export class ModelDirectory {
       })
       return
     }
-    const selection = view?.next ?? catalog.value.default
+    const projected = view?.next ?? catalog.value.default
+    const selection = reconcileModelCurrent(this.pending, projected)
+    if (this.pending !== null && sameModelRoute(this.pending, projected)) this.pending = null
     const routable = catalog.value.groups.some(group => group.id === selection.provider
       && group.models.some(model => model.id === selection.model))
     this.store.update((state) => {

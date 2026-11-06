@@ -10,13 +10,16 @@ import type {
   InjectFace, PropsLocale, PropsRuntime, SessionIdOf, SlotCore, TranslateNS,
 } from '@deepseek-ai/dsh-client-ui-slots'
 import { GROK_ACTIVITY_TOOL, type ActivityMeta } from '../../lib/activity.js'
+import { requestErrorAlert } from '../../lib/model-seat.js'
 import {
+  dshSeatSelection,
   modelCommandOptions,
   modelCommandSelection,
   type DshModelCommandState,
   type ModelCommandOption,
 } from './model-command.js'
 import { ModelDirectoryResolver } from './model-directory.js'
+import { createReplacementTracker, REPLACEMENT_TIMEOUT_MS } from './replacement-filter.js'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -31,7 +34,13 @@ const SESSION_PATH = '/grok-acp/session'
 const GROK_PRESET = 'grok-build'
 const STATUS_EVENT = 'dsh-grok-acp:status'
 const CORDIS_ORIGINAL = Symbol.for('cordis.original')
-const replacingSessions = new Set<string>()
+const replacingSessions = createReplacementTracker({
+  timeoutMs: REPLACEMENT_TIMEOUT_MS,
+  schedule: (fn, ms) => {
+    const timer = window.setTimeout(fn, ms)
+    return () => { window.clearTimeout(timer) }
+  },
+})
 const LOCALE_NS = 'dsh-grok-acp'
 
 const en = {
@@ -406,12 +415,11 @@ function installReplacementFrameFilter(service: unknown): () => void {
   const originalAdded = runtime.handleSessionAdded
   if (typeof originalRemoved !== 'function' || typeof originalAdded !== 'function') return () => undefined
   const removed = function (this: ClientSessionsRuntime, sessionId: string): void {
-    if (replacingSessions.has(sessionId)) return
+    if (replacingSessions.noteRemoval(sessionId, () => originalRemoved.call(this, sessionId))) return
     originalRemoved.call(this, sessionId)
   }
   const added = function (this: ClientSessionsRuntime, summary: { sessionId: string; agentAvailable?: boolean }): void {
-    // The replacement is complete once its agent is published, not at the first "added".
-    if (summary.agentAvailable === true) replacingSessions.delete(summary.sessionId)
+    replacingSessions.noteAdded(summary.sessionId, summary.agentAvailable === true)
     originalAdded.call(this, summary)
   }
   runtime.handleSessionRemoved = removed
@@ -420,10 +428,6 @@ function installReplacementFrameFilter(service: unknown): () => void {
     if (runtime.handleSessionRemoved === removed) runtime.handleSessionRemoved = originalRemoved
     if (runtime.handleSessionAdded === added) runtime.handleSessionAdded = originalAdded
   }
-}
-
-function finishReplacement(sessionId: string): void {
-  window.setTimeout(() => { replacingSessions.delete(sessionId) }, 5_000)
 }
 
 /** Read-only stand-in for a started Grok session whose agent is not live yet (cold history). */
@@ -508,14 +512,13 @@ function HarnessPicker({
   const select = async (harness: 'dsh' | 'grok-build'): Promise<void> => {
     if (harness === snapshot.harness || locked) return
     setSaving(true)
-    replacingSessions.add(sessionId)
+    replacingSessions.begin(sessionId)
     try {
       setSnapshot(await writeStatus({ sessionId, harness }))
       setError(undefined)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
     } finally {
-      finishReplacement(sessionId)
       setSaving(false)
     }
   }
@@ -621,6 +624,7 @@ function GrokModelSeat({
 }) {
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string>()
   const rootRef = useRef<HTMLDivElement>(null)
   const models = snapshot.grok.models
   const current = models.find(model => model.id === snapshot.grok.model) ?? models[0]
@@ -643,6 +647,9 @@ function GrokModelSeat({
     setSaving(true)
     try {
       onChange(await writeStatus({ sessionId, ...payload }))
+      setError(undefined)
+    } catch (cause) {
+      setError(requestErrorAlert(cause).title)
     } finally {
       setSaving(false)
     }
@@ -653,6 +660,7 @@ function GrokModelSeat({
       <button type="button" disabled={locked || saving} style={trigger} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(value => !value)}>
         {triggerLabel}
       </button>
+      {error && <span title={error} role="alert" style={{ color: '#c94848', fontSize: 12, whiteSpace: 'nowrap' }}>! {t('unavailable')}</span>}
       {open && (
         <div role="listbox" aria-label={t('grokModels')} style={menu}>
           <div style={{ padding: '4px 10px 6px', fontSize: 11, opacity: 0.55 }}>{t('grokModels')}</div>
@@ -678,9 +686,9 @@ function DshModelSeat({
   locked, directory, load, select, t,
 }: {
   locked: boolean
-  directory?: { subscribe: (fn: () => void) => () => void; getSnapshot: () => { current: { provider: string; model: string; reasoningEffort?: string } | null; groups: Array<{ id: string; name: string; models: Array<{ id: string; name: string }> }> } }
+  directory?: { subscribe: (fn: () => void) => () => void; getSnapshot: () => DshModelCommandState }
   load?: () => void
-  select?: (selection: { provider: string; model: string }) => Promise<boolean>
+  select?: (selection: { provider: string; model: string; reasoningEffort?: string }) => Promise<boolean>
   t: Translate
 }) {
   const state = useSyncExternalStore(
@@ -707,7 +715,8 @@ function DshModelSeat({
               style={menuItem(group.id === state.current?.provider && model.id === state.current?.model)}
               onClick={() => {
                 setOpen(false)
-                void select?.({ provider: group.id, model: model.id })
+                const selection = dshSeatSelection(group.id, model.id, state)
+                if (selection !== undefined) void select?.(selection)
               }}
             >
               <span style={{ display: 'block' }}>{model.name}</span>
@@ -725,9 +734,9 @@ function ComposerModelSeat(props: {
   locked: boolean
   useSession: (select: (state: { running: boolean; blank: boolean }) => unknown) => unknown
   useProjection: (key: string) => unknown
-  directory?: { subscribe: (fn: () => void) => () => void; getSnapshot: () => { current: { provider: string; model: string; reasoningEffort?: string } | null; groups: Array<{ id: string; name: string; models: Array<{ id: string; name: string }> }> } }
+  directory?: { subscribe: (fn: () => void) => () => void; getSnapshot: () => DshModelCommandState }
   loadDsh?: () => void
-  selectDsh?: (selection: { provider: string; model: string }) => Promise<boolean>
+  selectDsh?: (selection: { provider: string; model: string; reasoningEffort?: string }) => Promise<boolean>
   t: Translate
 }) {
   const running = Boolean(props.useSession(state => state.running))
@@ -781,9 +790,9 @@ export function apply(ctx: Context): void {
     const models = (scope as Context & {
       modelDirectories: {
         directoryFor: (id: string) => {
-          store: { subscribe: (fn: () => void) => () => void; getSnapshot: () => { current: { provider: string; model: string } | null; groups: Array<{ id: string; name: string; models: Array<{ id: string; name: string }> }> } }
+          store: { subscribe: (fn: () => void) => () => void; getSnapshot: () => DshModelCommandState }
           load: () => Promise<unknown>
-          select: (selection: { provider: string; model: string }) => Promise<unknown>
+          select: (selection: { provider: string; model: string; reasoningEffort?: string }) => Promise<unknown>
         }
       }
     }).modelDirectories
@@ -798,7 +807,7 @@ export function apply(ctx: Context): void {
             return {
               directory: directory.store,
               loadDsh: () => { directory.load().catch(() => undefined) },
-              selectDsh: (selection: { provider: string; model: string }) => directory.select(selection).then(() => true, () => false),
+              selectDsh: (selection: { provider: string; model: string; reasoningEffort?: string }) => directory.select(selection).then(() => true, () => false),
               t,
             }
           },
